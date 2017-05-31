@@ -458,7 +458,7 @@ private:
         std::string str;
         for (size_t i = 0; i < services.size(); ++i) {
             const std::string s{services[i].get_str()};
-            str += s == "NETWORK_LIMITED" ? 'l' : s == "P2P_V2" ? '2' : ToLower(s[0]);
+            str += s == "NETWORK_LIMITED" ? 'l' : s == "P2P_V2" ? '2' : s == "REDUCED_DATA" ? '4' : ToLower(s[0]);
         }
         return str;
     }
@@ -711,6 +711,7 @@ public:
         "           \"c\" - COMPACT_FILTERS: peer can handle basic block filter requests (see BIPs 157 and 158)\n"
         "           \"l\" - NETWORK_LIMITED: peer limited to serving only the last 288 blocks (~2 days)\n"
         "           \"2\" - P2P_V2: peer supports version 2 P2P transport protocol, as defined in BIP 324\n"
+        "           \"4\" - REDUCED_DATA peer enforces the ReducedData SoftFork\n"
         "           \"u\" - UNKNOWN: unrecognized bit flag\n"
         "  v        Version of transport protocol used for the connection\n"
         "  mping    Minimum observed ping time, in milliseconds (ms)\n"

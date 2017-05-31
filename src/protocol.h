@@ -336,6 +336,9 @@ enum ServiceFlags : uint64_t {
     // collisions and other cases where nodes may be advertising a service they
     // do not actually support. Other service bits should be allocated via the
     // BIP process.
+
+    // NODE_REDUCED_DATA means the node enforces ReducedData rules as applicable
+    NODE_REDUCED_DATA = (1 << 27),
 };
 
 /**
@@ -351,7 +354,7 @@ std::vector<std::string> serviceFlagsToStr(uint64_t flags);
  * should be updated appropriately to filter for nodes with
  * desired service flags (compatible with our new flags).
  */
-constexpr ServiceFlags SeedsServiceFlags() { return ServiceFlags(NODE_NETWORK | NODE_WITNESS); }
+constexpr ServiceFlags SeedsServiceFlags() { return ServiceFlags(NODE_NETWORK | NODE_WITNESS | NODE_REDUCED_DATA); }
 
 /**
  * Checks if a peer with the given service flags may be capable of having a
