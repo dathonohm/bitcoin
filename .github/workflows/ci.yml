@@ -387,6 +387,10 @@ jobs:
         with:
           use-cirrus: ${{ needs.runners.outputs.use-cirrus-runners }}
 
+      - name: Clear unnecessary files
+        if: ${{ needs.runners.outputs.provider == 'gha' && true || false }} # Only needed on GHA runners
+        uses: ./.github/actions/clear-files
+
       - name: Enable bpfcc script
         if: ${{ env.CONTAINER_NAME == 'ci_native_asan' }}
         # In the image build step, no external environment variables are available,
