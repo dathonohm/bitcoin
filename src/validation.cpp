@@ -2283,6 +2283,10 @@ script_verify_flags GetBlockScriptFlags(const CBlockIndex& block_index, const Ch
         flags |= SCRIPT_VERIFY_NULLDUMMY;
     }
 
+    if (DeploymentActiveAt(block_index, chainman, Consensus::DEPLOYMENT_REDUCED_DATA)) {
+        flags |= SCRIPT_VERIFY_REDUCED_DATA;
+    }
+
     return flags;
 }
 
