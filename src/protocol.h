@@ -337,8 +337,8 @@ enum ServiceFlags : uint64_t {
     // do not actually support. Other service bits should be allocated via the
     // BIP process.
 
-    // NODE_BIP148 means the node enforces BIP 148's mandatory Segwit activation beginning August 1, 2017
-    NODE_BIP148 = (1 << 27),
+    // NODE_BIP444 means the node enforces BIP 444 rules as applicable
+    NODE_BIP444 = (1 << 27),
 };
 
 /**
