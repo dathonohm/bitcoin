@@ -337,8 +337,8 @@ enum ServiceFlags : uint64_t {
     // do not actually support. Other service bits should be allocated via the
     // BIP process.
 
-    // NODE_BIP444 means the node enforces BIP 444 rules as applicable
-    NODE_BIP444 = (1 << 27),
+    // NODE_UASF_REDUCED_DATA means the node enforces UASFReducedData rules as applicable
+    NODE_UASF_REDUCED_DATA = (1 << 27),
 };
 
 /**
