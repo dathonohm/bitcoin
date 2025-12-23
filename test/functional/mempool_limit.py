@@ -202,7 +202,7 @@ class MempoolLimitTest(BitcoinTestFramework):
         # happen in the middle of package evaluation, as it can invalidate the coins cache.
         mempool_evicted_tx = self.wallet.send_self_transfer(
             from_node=node,
-            fee_rate=mempoolmin_feerate,
+            fee_rate=mempoolmin_feerate + Decimal('0.00000001'),
             target_vsize=evicted_vsize,
             confirmed_only=True
         )
