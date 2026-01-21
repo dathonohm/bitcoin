@@ -248,7 +248,7 @@ if [ "${mode}" = "tested" ] || [ "${mode}" = "reckless" ] || [ "${mode}" = "cust
 
   echo "# Downloading Bitcoin KNOTS+BIP-110 v${bitcoinVersion} for ${bitcoinOSversion} ..."
   binaryName="bitcoin-${bitcoinVersion}-${bitcoinOSversion}.tar.gz"
-  wget https://github.com/dathonohm/bitcoin/releases/download/${pathVersion}/${binaryName}
+  wget https://github.com/dathonohm/bitcoin/releases/download/v${pathVersion}/${binaryName}
   if [ ! -f "./${binaryName}" ]; then
     echo "# FAIL # Downloading BITCOIN KNOTS BINARY did not succeed."
     exit 1
