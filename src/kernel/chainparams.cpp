@@ -396,10 +396,13 @@ public:
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
         consensus.vDeployments[Consensus::DEPLOYMENT_TAPROOT].min_activation_height = 0; // No activation delay
 
+        // Deployment of UASF-ReducedData (temporary UASF)
         consensus.vDeployments[Consensus::DEPLOYMENT_REDUCED_DATA].bit = 4;
-        consensus.vDeployments[Consensus::DEPLOYMENT_REDUCED_DATA].nStartTime = Consensus::BIP9Deployment::NEVER_ACTIVE;
+        consensus.vDeployments[Consensus::DEPLOYMENT_REDUCED_DATA].nStartTime = 1764547200; // December 1st, 2025
         consensus.vDeployments[Consensus::DEPLOYMENT_REDUCED_DATA].nTimeout = Consensus::BIP9Deployment::NO_TIMEOUT;
         consensus.vDeployments[Consensus::DEPLOYMENT_REDUCED_DATA].min_activation_height = 0;
+        consensus.vDeployments[Consensus::DEPLOYMENT_REDUCED_DATA].active_duration = 52416; // ~1 year
+        consensus.vDeployments[Consensus::DEPLOYMENT_REDUCED_DATA].threshold = 1109; // 55% of 2016
 
         consensus.nMinimumChainWork = uint256{"0000000000000000000000000000000000000000000001d6dce8651b6094e4c1"};
         consensus.defaultAssumeValid = uint256{"0000000000003ed4f08dbdf6f7d6b271a6bcffce25675cb40aa9fa43179a89f3"}; // 72600
