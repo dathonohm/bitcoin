@@ -4633,7 +4633,7 @@ static bool ContextualCheckBlockHeaderVolatile(const CBlockHeader& block, BlockV
     const Consensus::Params& consensusParams = chainman.GetConsensus();
 
     // BIP148-style mandatory signaling for deployments approaching max_activation_height
-    // Enforce signaling during the period before forced lock-in to help old nodes activate naturally
+    // Enforce signaling during the period before forced lock-in
     const int nPeriod = consensusParams.nMinerConfirmationWindow;
     const int nHeight = pindexPrev == nullptr ? 0 : pindexPrev->nHeight + 1;
 
