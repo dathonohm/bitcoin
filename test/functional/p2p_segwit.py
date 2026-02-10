@@ -1355,9 +1355,8 @@ class SegWitTest(BitcoinTestFramework):
         for version in list(range(OP_1, OP_16 + 1)) + [OP_0]:
             # First try to spend to a future version segwit script_pubkey.
             if version == OP_1:
-                # Use 20-byte program to avoid Taproot (32-byte) and stay under
-                # REDUCED_DATA's 34-byte output limit (33-byte program would be 35 bytes total)
-                script_pubkey = CScript([CScriptOp(version), witness_hash[:20]])
+                # Don't use 32-byte v1 witness (used by Taproot; see BIP 341)
+                script_pubkey = CScript([CScriptOp(version), witness_hash[:31]])
             else:
                 script_pubkey = CScript([CScriptOp(version), witness_hash])
             tx.vin = [CTxIn(COutPoint(self.utxo[0].sha256, self.utxo[0].n), b"")]
