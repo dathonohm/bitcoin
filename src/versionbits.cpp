@@ -83,7 +83,7 @@ ThresholdState AbstractThresholdConditionChecker::GetStateFor(const CBlockIndex*
                     // Overrides timeout to guarantee activation
                     stateNext = ThresholdState::LOCKED_IN;
                 } else if (pindexPrev->GetMedianTimePast() >= nTimeTimeout) {
-                    // Timeout without activation (only if max_activation_height not set)
+                    // Timeout without activation
                     stateNext = ThresholdState::FAILED;
                 }
                 break;
