@@ -385,21 +385,23 @@ class MaxActivationHeightTest(BitcoinTestFramework):
         self.log.info(f"Block 575: Status={status}")
         assert_equal(status, 'active')
 
-        # Mine block 576 (432+144) - last active block
-        self.log.info("Mining block 576 (432+144) - last active block...")
+        # Mine block 576 (432+144) - deployment has expired
+        # RPC status uses State(blockindex->pprev), so expired appears at tip 576
+        self.log.info("Mining block 576 (432+144) - deployment should be expired...")
         self.mine_blocks(node, 1, signal=False)
         assert_equal(node.getblockcount(), 576)
         status, since = self.get_status(node)
-        self.log.info(f"Block 576: Status={status}")
-        assert_equal(status, 'active')
+        self.log.info(f"Block 576: Status={status}, Since={since}")
+        assert_equal(status, 'expired')
+        assert_equal(since, 576)
 
-        # Mine block 577 (432+144+1) - deployment should have expired
-        self.log.info("Mining block 577 (432+144+1) - deployment should have expired...")
+        # Mine block 577 - verify EXPIRED is terminal
+        self.log.info("Mining block 577 - verify EXPIRED is terminal...")
         self.mine_blocks(node, 1, signal=False)
         assert_equal(node.getblockcount(), 577)
-        # Note: Status may still show 'active' but deployment should no longer be enforced
-        # This matches the behavior in feature_temporary_deployment.py
-        self.log.info("Block 577: Deployment has expired (no longer enforced)")
+        status, since = self.get_status(node)
+        self.log.info(f"Block 577: Status={status}")
+        assert_equal(status, 'expired')
 
         self.log.info("\n=== TEST 5 COMPLETE ===")
         self.log.info("SUCCESS: Temporary deployment with max_height activated and expired correctly")

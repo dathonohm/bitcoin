@@ -12,6 +12,7 @@ ThresholdState AbstractThresholdConditionChecker::GetStateFor(const CBlockIndex*
     int nThreshold = Threshold(params);
     int min_activation_height = MinActivationHeight(params);
     int max_activation_height = MaxActivationHeight(params);
+    int active_duration = ActiveDuration(params);
     int64_t nTimeStart = BeginTime(params);
     int64_t nTimeTimeout = EndTime(params);
 
@@ -50,6 +51,16 @@ ThresholdState AbstractThresholdConditionChecker::GetStateFor(const CBlockIndex*
     // At this point, cache[pindexPrev] is known
     assert(cache.count(pindexPrev));
     ThresholdState state = cache[pindexPrev];
+
+    // For temporary deployments, track when ACTIVE started so we know when to transition to EXPIRED.
+    // Only needed when there are blocks to compute in the walk-forward; if vToCompute is empty,
+    // everything is cached and we return immediately. This guard also prevents infinite recursion:
+    // GetStateSinceHeightFor calls GetStateFor, which would find ACTIVE in cache and call
+    // GetStateSinceHeightFor again without the !vToCompute.empty() check.
+    int activation_height = 0;
+    if (!vToCompute.empty() && state == ThresholdState::ACTIVE && active_duration < std::numeric_limits<int>::max()) {
+        activation_height = GetStateSinceHeightFor(pindexPrev, params, cache);
+    }
 
     // Now walk forward and compute the state of descendants of pindexPrev
     while (!vToCompute.empty()) {
@@ -92,11 +103,21 @@ ThresholdState AbstractThresholdConditionChecker::GetStateFor(const CBlockIndex*
                 // Progresses into ACTIVE provided activation height will have been reached.
                 if (pindexPrev->nHeight + 1 >= min_activation_height) {
                     stateNext = ThresholdState::ACTIVE;
+                    if (active_duration < std::numeric_limits<int>::max()) {
+                        activation_height = pindexPrev->nHeight + 1;
+                    }
+                }
+                break;
+            }
+            case ThresholdState::ACTIVE: {
+                if (active_duration < std::numeric_limits<int>::max() &&
+                    pindexPrev->nHeight + 1 >= activation_height + active_duration) {
+                    stateNext = ThresholdState::EXPIRED;
                 }
                 break;
             }
             case ThresholdState::FAILED:
-            case ThresholdState::ACTIVE: {
+            case ThresholdState::EXPIRED: {
                 // Nothing happens, these are terminal states.
                 break;
             }
@@ -194,6 +215,7 @@ protected:
     int64_t EndTime(const Consensus::Params& params) const override { return params.vDeployments[id].nTimeout; }
     int MinActivationHeight(const Consensus::Params& params) const override { return params.vDeployments[id].min_activation_height; }
     int MaxActivationHeight(const Consensus::Params& params) const override { return params.vDeployments[id].max_activation_height; }
+    int ActiveDuration(const Consensus::Params& params) const override { return params.vDeployments[id].active_duration; }
     int Period(const Consensus::Params& params) const override { return params.nMinerConfirmationWindow; }
     int Threshold(const Consensus::Params& params) const override {
         // Use per-deployment threshold if set, otherwise fall back to global

@@ -255,6 +255,12 @@ class TemporaryDeploymentTest(BitcoinTestFramework):
         self.sync_all()
         assert_equal(node_bip110.getblockcount(), 576)
 
+        # Verify state machine reports EXPIRED
+        status, since = self.get_deployment_status(node_bip110)
+        self.log.info(f"Block 576: Status={status}, Since={since}")
+        assert_equal(status, 'expired')
+        assert_equal(since, 576)
+
         # =====================================================================
         # Phase 6: Test post-expiry convergence
         # =====================================================================
@@ -277,7 +283,7 @@ class TemporaryDeploymentTest(BitcoinTestFramework):
         # Summary
         # =====================================================================
         self.log.info("All tests passed:")
-        self.log.info("  - BIP9 state transitions (DEFINED -> STARTED -> LOCKED_IN -> ACTIVE)")
+        self.log.info("  - BIP9 state transitions (DEFINED -> STARTED -> LOCKED_IN -> ACTIVE -> EXPIRED)")
         self.log.info("  - Chain split at activation (BIP-110 rejects, Core accepts)")
         self.log.info("  - Reorg to longer valid chain on reconnect")
         self.log.info("  - Rules enforced during active period (432-575)")
