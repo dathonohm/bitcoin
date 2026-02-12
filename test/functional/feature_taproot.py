@@ -1144,7 +1144,7 @@ def spenders_taproot_active():
                     for _ in range(merkledepth):
                         scripts = [scripts, random.choice(PARTNER_MERKLE_FN)]
                     tap = taproot_construct(pubs[0], scripts)
-                    standard = annex is None and dummylen <= 80 and len(pubkey) == 32 and OP_IF not in script and merkledepth <= TAPROOT_CONTROL_MAX_NODE_COUNT_REDUCED
+                    standard = annex is None and dummylen <= 80 and len(pubkey) == 32 and OP_IF not in script and OP_NOTIF not in script and merkledepth <= TAPROOT_CONTROL_MAX_NODE_COUNT_REDUCED
                     add_spender(spenders, "tapscript/sigopsratio_%i" % fn_num, tap=tap, leaf="s", annex=annex, hashtype=hashtype, key=secs[1], inputs=[getter("sign"), random.randbytes(dummylen)], standard=standard, failure={"inputs": [getter("sign"), random.randbytes(dummylen - 1)]}, **ERR_SIGOPS_RATIO)
 
     # Future leaf versions
