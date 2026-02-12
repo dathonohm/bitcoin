@@ -744,6 +744,7 @@ public:
 
     ThresholdState GetStateFor(const CBlockIndex* pindexPrev) const { return AbstractThresholdConditionChecker::GetStateFor(pindexPrev, paramsDummy, cache); }
     int GetStateSinceHeightFor(const CBlockIndex* pindexPrev) const { return AbstractThresholdConditionChecker::GetStateSinceHeightFor(pindexPrev, paramsDummy, cache); }
+    void ClearCache() { cache.clear(); }
 };
 
 BOOST_AUTO_TEST_CASE(versionbits_expired_state)
@@ -819,6 +820,371 @@ BOOST_AUTO_TEST_CASE(versionbits_expired_state)
     }
     BOOST_CHECK(checker.GetStateFor(blocks.back()) == ThresholdState::EXPIRED);
     BOOST_CHECK_EQUAL(checker.GetStateSinceHeightFor(blocks.back()), 720);
+
+    cleanup();
+}
+
+BOOST_AUTO_TEST_CASE(versionbits_expired_unaligned_duration)
+{
+    // Test active_duration that is NOT a multiple of the period.
+    // active_duration=200, period=144. Activation at 432.
+    // 432 + 200 = 632, which falls mid-period 4 (576-719).
+    // The EXPIRED transition only happens at period boundaries, so:
+    // - At pindexPrev=575: state for 576+ checks 576 >= 632? No -> ACTIVE
+    // - At pindexPrev=719: state for 720+ checks 720 >= 632? Yes -> EXPIRED
+    // The deployment stays ACTIVE for the full period even though active_duration
+    // was reached mid-period. This is by design — state is per-period.
+
+    std::vector<CBlockIndex*> blocks;
+    auto cleanup = [&blocks]() {
+        for (auto* b : blocks) delete b;
+        blocks.clear();
+    };
+
+    TestTemporaryDeploymentConditionChecker checker(200);
+
+    auto mine_block = [&blocks](int32_t nVersion) -> CBlockIndex* {
+        CBlockIndex* pindex = new CBlockIndex();
+        pindex->nHeight = blocks.size();
+        pindex->pprev = blocks.empty() ? nullptr : blocks.back();
+        pindex->nTime = 1415926536 + 600 * pindex->nHeight;
+        pindex->nVersion = nVersion;
+        pindex->BuildSkip();
+        blocks.push_back(pindex);
+        return pindex;
+    };
+
+    // Period 0: DEFINED (0-143)
+    for (int i = 0; i < 144; i++) mine_block(0);
+    BOOST_CHECK(checker.GetStateFor(blocks.back()) == ThresholdState::STARTED);
+
+    // Period 1: Signal to lock in (144-287)
+    for (int i = 0; i < 144; i++) mine_block(0x100);
+    BOOST_CHECK(checker.GetStateFor(blocks.back()) == ThresholdState::LOCKED_IN);
+
+    // Period 2: LOCKED_IN (288-431)
+    for (int i = 0; i < 144; i++) mine_block(0);
+    BOOST_CHECK(checker.GetStateFor(blocks.back()) == ThresholdState::ACTIVE);
+    BOOST_CHECK_EQUAL(checker.GetStateSinceHeightFor(blocks.back()), 432);
+
+    // Period 3: ACTIVE (432-575). 576 < 432+200=632, so still ACTIVE next period.
+    for (int i = 0; i < 144; i++) mine_block(0);
+    BOOST_CHECK(checker.GetStateFor(blocks.back()) == ThresholdState::ACTIVE);
+
+    // Period 4 (576-719). active_duration elapses at block 632 (432+200),
+    // but state is per-period so it remains ACTIVE until the period boundary.
+    // GetStateFor takes pindexPrev, so passing blocks[631] gives the state
+    // for block 632 — still ACTIVE because transitions only happen at period
+    // boundaries.
+    for (int i = 0; i < 56; i++) mine_block(0); // mine to block 631
+    BOOST_CHECK(checker.GetStateFor(blocks[631]) == ThresholdState::ACTIVE);
+
+    // Finish period 4 — mine to block 719 so we can pass it as pindexPrev
+    // to GetStateFor, which returns the state for block 720 (EXPIRED).
+    for (int i = 0; i < 88; i++) mine_block(0); // mine to block 719
+    BOOST_CHECK(checker.GetStateFor(blocks.back()) == ThresholdState::EXPIRED);
+    BOOST_CHECK_EQUAL(checker.GetStateSinceHeightFor(blocks.back()), 720);
+
+    cleanup();
+}
+
+BOOST_AUTO_TEST_CASE(versionbits_expired_minimum_duration)
+{
+    // Test active_duration = 1 period (144). Minimum useful duration.
+    // Activation at 432, so 432+144=576. At pindexPrev=575, state for 576+:
+    // 576 >= 576 -> EXPIRED. Only one period of ACTIVE.
+
+    std::vector<CBlockIndex*> blocks;
+    auto cleanup = [&blocks]() {
+        for (auto* b : blocks) delete b;
+        blocks.clear();
+    };
+
+    TestTemporaryDeploymentConditionChecker checker(144);
+
+    auto mine_block = [&blocks](int32_t nVersion) -> CBlockIndex* {
+        CBlockIndex* pindex = new CBlockIndex();
+        pindex->nHeight = blocks.size();
+        pindex->pprev = blocks.empty() ? nullptr : blocks.back();
+        pindex->nTime = 1415926536 + 600 * pindex->nHeight;
+        pindex->nVersion = nVersion;
+        pindex->BuildSkip();
+        blocks.push_back(pindex);
+        return pindex;
+    };
+
+    // Period 0: DEFINED (0-143)
+    for (int i = 0; i < 144; i++) mine_block(0);
+    BOOST_CHECK(checker.GetStateFor(blocks.back()) == ThresholdState::STARTED);
+
+    // Period 1: Signal (144-287)
+    for (int i = 0; i < 144; i++) mine_block(0x100);
+    BOOST_CHECK(checker.GetStateFor(blocks.back()) == ThresholdState::LOCKED_IN);
+
+    // Period 2: LOCKED_IN (288-431)
+    for (int i = 0; i < 144; i++) mine_block(0);
+    BOOST_CHECK(checker.GetStateFor(blocks.back()) == ThresholdState::ACTIVE);
+    BOOST_CHECK_EQUAL(checker.GetStateSinceHeightFor(blocks.back()), 432);
+
+    // Period 3 (432-575): ACTIVE for this period, but state for 576+:
+    // 576 >= 432 + 144 = 576 -> EXPIRED immediately at next boundary
+    for (int i = 0; i < 144; i++) mine_block(0);
+    BOOST_CHECK(checker.GetStateFor(blocks.back()) == ThresholdState::EXPIRED);
+    BOOST_CHECK_EQUAL(checker.GetStateSinceHeightFor(blocks.back()), 576);
+
+    cleanup();
+}
+
+BOOST_AUTO_TEST_CASE(versionbits_expired_cold_cache)
+{
+    // Test that clearing the cache and re-querying correctly recovers
+    // the EXPIRED state. This exercises the activation_height recovery
+    // path in GetStateFor where it calls GetStateSinceHeightFor to find
+    // when ACTIVE started.
+
+    std::vector<CBlockIndex*> blocks;
+    auto cleanup = [&blocks]() {
+        for (auto* b : blocks) delete b;
+        blocks.clear();
+    };
+
+    TestTemporaryDeploymentConditionChecker checker(288);
+
+    auto mine_block = [&blocks](int32_t nVersion) -> CBlockIndex* {
+        CBlockIndex* pindex = new CBlockIndex();
+        pindex->nHeight = blocks.size();
+        pindex->pprev = blocks.empty() ? nullptr : blocks.back();
+        pindex->nTime = 1415926536 + 600 * pindex->nHeight;
+        pindex->nVersion = nVersion;
+        pindex->BuildSkip();
+        blocks.push_back(pindex);
+        return pindex;
+    };
+
+    // Build chain through to EXPIRED (same as basic test)
+    // Period 0: DEFINED (0-143)
+    for (int i = 0; i < 144; i++) mine_block(0);
+    // Period 1: Signal (144-287)
+    for (int i = 0; i < 144; i++) mine_block(0x100);
+    // Period 2: LOCKED_IN (288-431)
+    for (int i = 0; i < 144; i++) mine_block(0);
+    // Period 3: ACTIVE (432-575)
+    for (int i = 0; i < 144; i++) mine_block(0);
+    // Period 4: (576-719) -> EXPIRED at 720
+    for (int i = 0; i < 144; i++) mine_block(0);
+
+    // Verify EXPIRED with warm cache
+    BOOST_CHECK(checker.GetStateFor(blocks.back()) == ThresholdState::EXPIRED);
+    BOOST_CHECK_EQUAL(checker.GetStateSinceHeightFor(blocks.back()), 720);
+
+    // Clear cache completely — simulates node restart
+    checker.ClearCache();
+
+    // Re-query: must walk from genesis, recover activation_height, compute EXPIRED
+    BOOST_CHECK(checker.GetStateFor(blocks.back()) == ThresholdState::EXPIRED);
+    BOOST_CHECK_EQUAL(checker.GetStateSinceHeightFor(blocks.back()), 720);
+
+    // Also verify intermediate states are correct after cache rebuild
+    checker.ClearCache();
+    // Query at end of period 3 (pindexPrev=575) — should be ACTIVE
+    BOOST_CHECK(checker.GetStateFor(blocks[575]) == ThresholdState::ACTIVE);
+    BOOST_CHECK_EQUAL(checker.GetStateSinceHeightFor(blocks[575]), 432);
+
+    // Now query at end of period 4 with partially-populated cache
+    // (period 3 is cached as ACTIVE from the query above)
+    BOOST_CHECK(checker.GetStateFor(blocks.back()) == ThresholdState::EXPIRED);
+    BOOST_CHECK_EQUAL(checker.GetStateSinceHeightFor(blocks.back()), 720);
+
+    cleanup();
+}
+
+BOOST_AUTO_TEST_CASE(versionbits_expired_with_max_activation_height)
+{
+    // Test interaction: deployment with BOTH max_activation_height AND active_duration.
+    // max_activation_height forces LOCKED_IN, then active_duration causes EXPIRED.
+    //
+    // period=144, max_activation_height=432, active_duration=288
+    // - Period 0 (0-143): DEFINED
+    // - Period 1 (144-287): STARTED (no signaling, but forced LOCKED_IN at boundary
+    //   because 288 >= 432 - 144)
+    // - Period 2 (288-431): LOCKED_IN
+    // - Period 3 (432-575): ACTIVE (activation_height=432)
+    // - Period 4 (576-719): ACTIVE
+    // - At pindexPrev=719: EXPIRED (720 >= 432 + 288)
+
+    std::vector<CBlockIndex*> blocks;
+    auto cleanup = [&blocks]() {
+        for (auto* b : blocks) delete b;
+        blocks.clear();
+    };
+
+    // Need a checker that has both max_activation_height AND active_duration
+    class TestCombinedChecker : public AbstractThresholdConditionChecker
+    {
+    private:
+        mutable ThresholdConditionCache cache;
+    public:
+        int64_t BeginTime(const Consensus::Params& params) const override { return 0; }
+        int64_t EndTime(const Consensus::Params& params) const override { return Consensus::BIP9Deployment::NO_TIMEOUT; }
+        int Period(const Consensus::Params& params) const override { return 144; }
+        int Threshold(const Consensus::Params& params) const override { return 108; }
+        int MaxActivationHeight(const Consensus::Params& params) const override { return 432; }
+        int ActiveDuration(const Consensus::Params& params) const override { return 288; }
+        bool Condition(const CBlockIndex* pindex, const Consensus::Params& params) const override { return (pindex->nVersion & 0x100); }
+        ThresholdState GetStateFor(const CBlockIndex* pindexPrev) const { return AbstractThresholdConditionChecker::GetStateFor(pindexPrev, paramsDummy, cache); }
+        int GetStateSinceHeightFor(const CBlockIndex* pindexPrev) const { return AbstractThresholdConditionChecker::GetStateSinceHeightFor(pindexPrev, paramsDummy, cache); }
+    };
+
+    TestCombinedChecker checker;
+
+    auto mine_block = [&blocks](int32_t nVersion) -> CBlockIndex* {
+        CBlockIndex* pindex = new CBlockIndex();
+        pindex->nHeight = blocks.size();
+        pindex->pprev = blocks.empty() ? nullptr : blocks.back();
+        pindex->nTime = 1415926536 + 600 * pindex->nHeight;
+        pindex->nVersion = nVersion;
+        pindex->BuildSkip();
+        blocks.push_back(pindex);
+        return pindex;
+    };
+
+    // Period 0: DEFINED (0-143), no signaling
+    for (int i = 0; i < 144; i++) mine_block(0);
+    BOOST_CHECK(checker.GetStateFor(blocks.back()) == ThresholdState::STARTED);
+
+    // Period 1: STARTED (144-287), no signaling — forced LOCKED_IN by max_activation_height
+    for (int i = 0; i < 144; i++) mine_block(0);
+    BOOST_CHECK(checker.GetStateFor(blocks.back()) == ThresholdState::LOCKED_IN);
+    BOOST_CHECK_EQUAL(checker.GetStateSinceHeightFor(blocks.back()), 288);
+
+    // Period 2: LOCKED_IN (288-431)
+    for (int i = 0; i < 144; i++) mine_block(0);
+    BOOST_CHECK(checker.GetStateFor(blocks.back()) == ThresholdState::ACTIVE);
+    BOOST_CHECK_EQUAL(checker.GetStateSinceHeightFor(blocks.back()), 432);
+
+    // Period 3: ACTIVE (432-575)
+    for (int i = 0; i < 144; i++) mine_block(0);
+    BOOST_CHECK(checker.GetStateFor(blocks.back()) == ThresholdState::ACTIVE);
+
+    // Period 4: (576-719) -> EXPIRED at 720
+    for (int i = 0; i < 144; i++) mine_block(0);
+    BOOST_CHECK(checker.GetStateFor(blocks.back()) == ThresholdState::EXPIRED);
+    BOOST_CHECK_EQUAL(checker.GetStateSinceHeightFor(blocks.back()), 720);
+
+    cleanup();
+}
+
+BOOST_AUTO_TEST_CASE(versionbits_expired_zero_duration)
+{
+    // Test active_duration = 0. This means the deployment expires immediately
+    // after activation — zero blocks of enforcement.
+    // Activation at 432, so 432 + 0 = 432. At pindexPrev=431 (end of LOCKED_IN),
+    // state for 432+: LOCKED_IN transitions to ACTIVE, sets activation_height=432.
+    // But that's computed for this period boundary. The ACTIVE->EXPIRED check
+    // happens on the NEXT iteration of the walk-forward.
+    // At pindexPrev=575 (end of period 3): 576 >= 432 + 0 = 432 -> EXPIRED.
+    // So active_duration=0 gives exactly one period of ACTIVE, same as
+    // active_duration=144 with period=144 (since transitions are per-period).
+
+    std::vector<CBlockIndex*> blocks;
+    auto cleanup = [&blocks]() {
+        for (auto* b : blocks) delete b;
+        blocks.clear();
+    };
+
+    TestTemporaryDeploymentConditionChecker checker(0);
+
+    auto mine_block = [&blocks](int32_t nVersion) -> CBlockIndex* {
+        CBlockIndex* pindex = new CBlockIndex();
+        pindex->nHeight = blocks.size();
+        pindex->pprev = blocks.empty() ? nullptr : blocks.back();
+        pindex->nTime = 1415926536 + 600 * pindex->nHeight;
+        pindex->nVersion = nVersion;
+        pindex->BuildSkip();
+        blocks.push_back(pindex);
+        return pindex;
+    };
+
+    // Period 0: DEFINED (0-143)
+    for (int i = 0; i < 144; i++) mine_block(0);
+    // Period 1: Signal (144-287)
+    for (int i = 0; i < 144; i++) mine_block(0x100);
+    BOOST_CHECK(checker.GetStateFor(blocks.back()) == ThresholdState::LOCKED_IN);
+
+    // Period 2: LOCKED_IN (288-431) -> ACTIVE at 432
+    for (int i = 0; i < 144; i++) mine_block(0);
+    BOOST_CHECK(checker.GetStateFor(blocks.back()) == ThresholdState::ACTIVE);
+    BOOST_CHECK_EQUAL(checker.GetStateSinceHeightFor(blocks.back()), 432);
+
+    // Period 3 (432-575): ACTIVE, but 576 >= 432+0 -> EXPIRED at next boundary
+    for (int i = 0; i < 144; i++) mine_block(0);
+    BOOST_CHECK(checker.GetStateFor(blocks.back()) == ThresholdState::EXPIRED);
+    BOOST_CHECK_EQUAL(checker.GetStateSinceHeightFor(blocks.back()), 576);
+
+    cleanup();
+}
+
+BOOST_AUTO_TEST_CASE(versionbits_no_signaling_after_expired)
+{
+    // Test that ComputeBlockVersion does NOT set the deployment bit after EXPIRED.
+    // Uses regtest with testdummy deployment configured with active_duration.
+    //
+    // ComputeBlockVersion only signals for STARTED and LOCKED_IN states.
+    // After EXPIRED, the bit should not be set.
+
+    ArgsManager args;
+    // testdummy: start=0, timeout=never, min_height=0, max_height=INT_MAX, active_duration=144
+    args.ForceSetArg("-vbparams", "testdummy:0:9223372036854775807:0:2147483647:144");
+    const auto chainParams = CreateChainParams(args, ChainType::REGTEST);
+    const auto& params = chainParams->GetConsensus();
+
+    VersionBitsCache vbcache;
+    const auto dep = Consensus::DEPLOYMENT_TESTDUMMY;
+    const uint32_t bitmask = vbcache.Mask(params, dep);
+    const int period = params.nMinerConfirmationWindow; // 144 for regtest
+
+    std::vector<CBlockIndex*> blocks;
+    auto cleanup = [&blocks]() {
+        for (auto* b : blocks) delete b;
+        blocks.clear();
+    };
+
+    auto mine_block = [&blocks](int32_t nVersion) -> CBlockIndex* {
+        CBlockIndex* pindex = new CBlockIndex();
+        pindex->nHeight = blocks.size();
+        pindex->pprev = blocks.empty() ? nullptr : blocks.back();
+        pindex->nTime = 1415926536 + 600 * pindex->nHeight;
+        pindex->nVersion = nVersion;
+        pindex->BuildSkip();
+        blocks.push_back(pindex);
+        return pindex;
+    };
+
+    // Period 0: DEFINED (0-143) — bit should not be set
+    for (int i = 0; i < period; i++) mine_block(VERSIONBITS_TOP_BITS);
+    BOOST_CHECK_EQUAL(vbcache.ComputeBlockVersion(blocks.back(), params) & bitmask, bitmask); // STARTED, bit set
+
+    // Period 1: STARTED — signal to lock in (144-287), bit should be set
+    for (int i = 0; i < period; i++) mine_block(VERSIONBITS_TOP_BITS | bitmask);
+    BOOST_CHECK(vbcache.State(blocks.back(), params, dep) == ThresholdState::LOCKED_IN);
+    BOOST_CHECK_EQUAL(vbcache.ComputeBlockVersion(blocks.back(), params) & bitmask, bitmask); // LOCKED_IN, bit set
+
+    // Period 2: LOCKED_IN (288-431), bit should be set
+    for (int i = 0; i < period; i++) mine_block(VERSIONBITS_TOP_BITS | bitmask);
+    BOOST_CHECK(vbcache.State(blocks.back(), params, dep) == ThresholdState::ACTIVE);
+    // ACTIVE: bit should NOT be set
+    BOOST_CHECK_EQUAL(vbcache.ComputeBlockVersion(blocks.back(), params) & bitmask, 0u);
+
+    // Period 3: ACTIVE (432-575)
+    for (int i = 0; i < period; i++) mine_block(VERSIONBITS_TOP_BITS);
+    BOOST_CHECK(vbcache.State(blocks.back(), params, dep) == ThresholdState::EXPIRED);
+    // EXPIRED: bit should NOT be set
+    BOOST_CHECK_EQUAL(vbcache.ComputeBlockVersion(blocks.back(), params) & bitmask, 0u);
+
+    // Period 4: EXPIRED (576+) — verify bit stays off
+    for (int i = 0; i < period; i++) mine_block(VERSIONBITS_TOP_BITS);
+    BOOST_CHECK(vbcache.State(blocks.back(), params, dep) == ThresholdState::EXPIRED);
+    BOOST_CHECK_EQUAL(vbcache.ComputeBlockVersion(blocks.back(), params) & bitmask, 0u);
 
     cleanup();
 }
