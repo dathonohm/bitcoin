@@ -79,6 +79,7 @@ from test_framework.blocktools import (
     add_witness_commitment,
 )
 from test_framework.script_util import (
+    PAY_TO_ANCHOR,
     script_to_p2wsh_script,
     script_to_p2sh_script,
 )
@@ -856,6 +857,65 @@ class UASFReducedDataTest(BitcoinTestFramework):
         assert_equal(result, 'bad-txns-vout-script-toolarge')
         self.log.info("  ✓ Generation tx with 84-byte OP_RETURN output rejected")
 
+    def test_p2a_witness_rejected(self):
+        """Test that P2A (PayToAnchor) spends with non-empty witness are rejected."""
+        self.log.info("Testing P2A non-empty witness rejection...")
+        node = self.nodes[0]
+
+        # Create a P2A output (4 bytes, within the 34-byte limit)
+        p2a_funding = self.create_test_transaction(PAY_TO_ANCHOR)
+        p2a_funding.rehash()
+        p2a_value = p2a_funding.vout[0].nValue
+
+        block_height = node.getblockcount() + 1
+        block = create_block(int(node.getbestblockhash(), 16), create_coinbase(block_height), int(node.getblockheader(node.getbestblockhash())['time']) + 1)
+        block.vtx.append(p2a_funding)
+        add_witness_commitment(block)
+        block.solve()
+        assert_equal(node.submitblock(block.serialize().hex()), None)
+        self.log.info("  P2A output created")
+
+        # Test 1: Spend with 100 KB of arbitrary witness data (must be rejected)
+        self.log.info("  Test: P2A spend with large arbitrary witness (should be rejected)")
+        arbitrary_data = b'\xab' * 100_000
+
+        p2a_spend = CTransaction()
+        p2a_spend.vin = [CTxIn(COutPoint(int(p2a_funding.rehash(), 16), 0))]
+        p2a_spend.vout = [CTxOut(p2a_value - 1000, CScript([OP_0, hash160(b'\x01' * 33)]))]
+        p2a_spend.wit.vtxinwit = [CTxInWitness()]
+        p2a_spend.wit.vtxinwit[0].scriptWitness.stack = [arbitrary_data]
+        p2a_spend.rehash()
+
+        block_height = node.getblockcount() + 1
+        block_bad = create_block(int(node.getbestblockhash(), 16), create_coinbase(block_height), int(node.getblockheader(node.getbestblockhash())['time']) + 1)
+        block_bad.vtx.append(p2a_spend)
+        add_witness_commitment(block_bad)
+        block_bad.solve()
+
+        result = node.submitblock(block_bad.serialize().hex())
+        assert result is not None
+        assert_equal(node.getblockcount(), block_height - 1)
+        self.log.info(f"  ✓ P2A spend with 100 KB witness rejected ({result})")
+
+        # Test 2: Spend with empty witness (must still be accepted)
+        self.log.info("  Test: P2A spend with empty witness (should be accepted)")
+        p2a_spend_empty = CTransaction()
+        p2a_spend_empty.vin = [CTxIn(COutPoint(int(p2a_funding.rehash(), 16), 0))]
+        p2a_spend_empty.vout = [CTxOut(p2a_value - 1000, CScript([OP_0, hash160(b'\x01' * 33)]))]
+        p2a_spend_empty.wit.vtxinwit = [CTxInWitness()]
+        p2a_spend_empty.wit.vtxinwit[0].scriptWitness.stack = []
+        p2a_spend_empty.rehash()
+
+        block_height = node.getblockcount() + 1
+        block_good = create_block(int(node.getbestblockhash(), 16), create_coinbase(block_height), int(node.getblockheader(node.getbestblockhash())['time']) + 1)
+        block_good.vtx.append(p2a_spend_empty)
+        add_witness_commitment(block_good)
+        block_good.solve()
+
+        assert_equal(node.submitblock(block_good.serialize().hex()), None)
+        assert_equal(node.getblockcount(), block_height)
+        self.log.info("  ✓ P2A spend with empty witness accepted")
+
     def run_test(self):
         self.init_test()
 
@@ -869,6 +929,7 @@ class UASFReducedDataTest(BitcoinTestFramework):
         self.test_op_success_rejection()
         self.test_op_if_notif_rejection()
         self.test_mandatory_flags_cannot_be_bypassed()
+        self.test_p2a_witness_rejected()
 
         self.log.info("All UASF-ReducedData tests completed")
 
