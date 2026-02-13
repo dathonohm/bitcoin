@@ -2207,9 +2207,9 @@ ValidationCache::ValidationCache(const size_t script_execution_cache_bytes, cons
  * This involves ECDSA signature checks so can be computationally intensive. This function should
  * only be called after the cheap sanity checks in CheckTxInputs passed.
  *
- * WARNING: flags_per_input deviations from flags must be handled with care. Under no
- * circumstances should they allow a script to pass that might not pass with the same
- * `flags` parameter (which is used for the cache).
+ * WARNING: flags_per_input deviations from flags must be handled with care. It should only be more
+ * relaxed than flags, never stricter (or a cached result could be wrong). Do not provide
+ * flags_per_input if every input uses the same flags, or the result will not be cached.
  *
  * If pvChecks is not nullptr, script checks are pushed onto it instead of being performed inline. Any
  * script checks which are not necessary (eg due to script execution cache hits) are, obviously,
@@ -2293,7 +2293,7 @@ bool CheckInputScripts(const CTransaction& tx, TxValidationState& state,
         }
     }
 
-    if (cacheFullScriptStore && !pvChecks) {
+    if (cacheFullScriptStore && (!pvChecks) && flags_per_input.empty()) {
         // We executed all of the provided scripts, and were told to
         // cache the result. Do so now.
         validation_cache.m_script_execution_cache.insert(hashCacheEntry);
@@ -2750,10 +2750,13 @@ bool Chainstate::ConnectBlock(const CBlock& block, BlockValidationState& state, 
             // BIP68 lock checks (as opposed to nLockTime checks) must
             // be in ConnectBlock because they require the UTXO set
             prevheights.resize(tx.vin.size());
-            flags_per_input.resize(tx.vin.size());
+            flags_per_input.clear();
             for (size_t j = 0; j < tx.vin.size(); j++) {
                 prevheights[j] = view.AccessCoin(tx.vin[j].prevout).nHeight;
-                flags_per_input[j] = (prevheights[j] < reduced_data_start_height) ? (flags & ~REDUCED_DATA_MANDATORY_VERIFY_FLAGS) : flags;
+                if (prevheights[j] < reduced_data_start_height) {
+                    flags_per_input.resize(tx.vin.size(), flags);
+                    flags_per_input[j] = flags & ~REDUCED_DATA_MANDATORY_VERIFY_FLAGS;
+                }
             }
 
             if (!SequenceLocks(tx, nLockTimeFlags, prevheights, *pindex)) {
