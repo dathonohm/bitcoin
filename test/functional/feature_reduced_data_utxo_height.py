@@ -438,6 +438,57 @@ class ReducedDataUTXOHeightTest(BitcoinTestFramework):
         node.reconsiderblock(current_tip2)
 
         # ======================================================================
+        # Test 8: cache state must not survive activation-boundary reorg
+        # ======================================================================
+        self.log.info("Test 8: script-execution cache must not survive boundary-context flip")
+
+        def rewind_to(height):
+            # Height-based loop: invalidating one tip can switch to an alternate branch at same height.
+            while node.getblockcount() > height:
+                node.invalidateblock(node.getbestblockhash())
+            assert_equal(node.getblockcount(), height)
+
+        branch_point = ACTIVATION_HEIGHT - 2  # 430
+        rewind_to(branch_point)
+
+        # spend_tx has a 300-byte witness element: valid only with pre-activation exemption.
+        funding_tx, spend_tx = self.create_p2wsh_funding_and_spending_tx(wallet, node, VIOLATION_SIZE)
+
+        # Branch A: funding at 431 (exempt).
+        block = self.create_test_block([funding_tx], signal=False)
+        assert_equal(node.submitblock(block.serialize().hex()), None)
+        assert_equal(node.getblockcount(), ACTIVATION_HEIGHT - 1)
+
+        self.restart_node(0, extra_args=['-vbparams=reduced_data:0:999999999999:288:2147483647:2147483647', '-par=1'])  # Use single-threaded validation to maximize chance of hitting cache-related issues.
+
+        # Validate-only block at height 432. This calls TestBlockValidity(fJustCheck=true),
+        # which populates the tx-wide script-execution cache under STRICT flags, even though
+        # the spend is only valid here due to the per-input "pre-activation UTXO" exemption.
+        self.generateblock(node, output=wallet.get_address(), transactions=[spend_tx.serialize().hex()], submit=False, sync_fun=self.no_op)
+
+        assert_equal(node.getblockcount(), ACTIVATION_HEIGHT - 1)
+
+        # Reorg to branch point; cache state is intentionally retained across reorg.
+        rewind_to(branch_point)
+
+        # Branch B: funding at 432 (non-exempt).
+        # Make this empty block unique to avoid duplicate-invalid when rebuilding branch B.
+        block = self.create_test_block([], signal=False)
+        block.nTime += 1
+        block.solve()
+        assert_equal(node.submitblock(block.serialize().hex()), None)  # 431
+        block = self.create_test_block([funding_tx], signal=False)
+        assert_equal(node.submitblock(block.serialize().hex()), None)  # 432
+
+        # Same spend is now non-exempt and must be rejected.
+        attack_block = self.create_test_block([spend_tx], signal=False)  # 433
+        result = node.submitblock(attack_block.serialize().hex())
+        assert result is not None and 'Push value size limit exceeded' in result, \
+            f"Expected rejection after boundary-crossing reorg, got: {result}"
+
+        self.log.info("✓ SUCCESS: Cache poisoning via activation-boundary reorg correctly prevented")
+
+        # ======================================================================
         # Summary
         # ======================================================================
         self.log.info(f"""
@@ -450,6 +501,7 @@ class ReducedDataUTXOHeightTest(BitcoinTestFramework):
         ✓ Test 5: New UTXO (height >= {ACTIVATION_HEIGHT}) is SUBJECT - 300-byte witness REJECTED
         ✓ Test 6: Boundary condition - UTXO at exactly height {ACTIVATION_HEIGHT} is SUBJECT
         ✓ Test 7: Mixed inputs - transaction rejected if ANY input violates
+        ✓ Test 8: Cache poisoning via activation-boundary reorg prevented
 
         Key validations:
         • REDUCED_DATA activated via BIP9 signaling at height {ACTIVATION_HEIGHT}
@@ -462,7 +514,7 @@ class ReducedDataUTXOHeightTest(BitcoinTestFramework):
         "Exempt inputs spending UTXOs prior to ReducedDataHeightBegin from
         reduced_data script validation rules"
 
-        All 7 tests passed!
+        All 8 tests passed!
         ============================================================
         """)
 
