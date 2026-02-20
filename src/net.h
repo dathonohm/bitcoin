@@ -865,7 +865,7 @@ public:
     /** Whether this peer provides all services that we want. Used for eviction decisions */
     std::atomic_bool m_has_all_wanted_services{false};
 
-    /** Whether this is a non-BIP110 outbound peer (lacks NODE_UASF_REDUCED_DATA).
+    /** Whether this is a non-BIP110 outbound peer (lacks NODE_REDUCED_DATA).
      *  Used to exclude from outbound connection counts. Limited to 2 such peers. */
     std::atomic_bool m_is_non_bip110_outbound{false};
 

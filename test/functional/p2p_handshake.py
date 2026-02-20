@@ -11,7 +11,7 @@ import time
 
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.messages import (
-    NODE_UASF_REDUCED_DATA,
+    NODE_REDUCED_DATA,
     NODE_NETWORK,
     NODE_NETWORK_LIMITED,
     NODE_NONE,
@@ -36,8 +36,8 @@ BASE_SERVICE_FLAGS_FULL = NODE_NETWORK | NODE_WITNESS
 BASE_SERVICE_FLAGS_PRUNED = NODE_NETWORK_LIMITED | NODE_WITNESS
 
 # Full service flags (with BIP-110)
-FULL_SERVICE_FLAGS_FULL = NODE_NETWORK | NODE_WITNESS | NODE_UASF_REDUCED_DATA
-FULL_SERVICE_FLAGS_PRUNED = NODE_NETWORK_LIMITED | NODE_WITNESS | NODE_UASF_REDUCED_DATA
+FULL_SERVICE_FLAGS_FULL = NODE_NETWORK | NODE_WITNESS | NODE_REDUCED_DATA
+FULL_SERVICE_FLAGS_PRUNED = NODE_NETWORK_LIMITED | NODE_WITNESS | NODE_REDUCED_DATA
 
 
 class P2PHandshakeTest(BitcoinTestFramework):
@@ -120,7 +120,7 @@ class P2PHandshakeTest(BitcoinTestFramework):
         peer2.sync_with_ping()
         assert len(node.getpeerinfo()) == 2
         # Third non-BIP110 peer should be rejected
-        with node.assert_debug_log(["peer lacks NODE_UASF_REDUCED_DATA and already have 2 non-BIP110 outbound peers"]):
+        with node.assert_debug_log(["peer lacks NODE_REDUCED_DATA and already have 2 non-BIP110 outbound peers"]):
             node.add_outbound_p2p_connection(
                 P2PInterface(), p2p_idx=2, wait_for_disconnect=True,
                 connection_type="outbound-full-relay", services=non_bip110_services,
@@ -133,15 +133,15 @@ class P2PHandshakeTest(BitcoinTestFramework):
         self.wait_until(lambda: len(node.getpeerinfo()) == 0)
 
         self.log.info("Check that BIP110 peers always connect")
-        self.test_desirable_service_flags(node, [NODE_NETWORK | NODE_WITNESS | NODE_UASF_REDUCED_DATA],
+        self.test_desirable_service_flags(node, [NODE_NETWORK | NODE_WITNESS | NODE_REDUCED_DATA],
                                           BASE_SERVICE_FLAGS_FULL, expect_disconnect=False)
 
         self.log.info("Check that limited peers are only desired if the local chain is close to the tip (<24h)")
         self.generate_at_mocktime(int(time.time()) - 25 * 3600)  # tip outside the 24h window, should fail
-        self.test_desirable_service_flags(node, [NODE_NETWORK_LIMITED | NODE_WITNESS | NODE_UASF_REDUCED_DATA],
+        self.test_desirable_service_flags(node, [NODE_NETWORK_LIMITED | NODE_WITNESS | NODE_REDUCED_DATA],
                                           BASE_SERVICE_FLAGS_FULL, expect_disconnect=True)
         self.generate_at_mocktime(int(time.time()) - 23 * 3600)  # tip inside the 24h window, should succeed
-        self.test_desirable_service_flags(node, [NODE_NETWORK_LIMITED | NODE_WITNESS | NODE_UASF_REDUCED_DATA],
+        self.test_desirable_service_flags(node, [NODE_NETWORK_LIMITED | NODE_WITNESS | NODE_REDUCED_DATA],
                                           BASE_SERVICE_FLAGS_PRUNED, expect_disconnect=False)
 
         self.log.info("Check that feeler connections get disconnected immediately")
