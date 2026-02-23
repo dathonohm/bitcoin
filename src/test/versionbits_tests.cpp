@@ -463,7 +463,7 @@ BOOST_FIXTURE_TEST_CASE(versionbits_computeblockversion, BlockVersionTest)
 }
 
 /**
- * Test condition checker with max_activation_height for UASF-style flag-day activation.
+ * Test condition checker with max_activation_height for mandatory activation deadline.
  * When max_activation_height is set, the deployment forces LOCKED_IN one period before
  * max_activation_height, even if threshold signaling was not met.
  */
@@ -697,7 +697,7 @@ BOOST_FIXTURE_TEST_CASE(versionbits_max_activation_height_parsing, BasicTestingS
 
     {
         ArgsManager args;
-        // Test with max_activation_height=432 (UASF-style)
+        // Test with max_activation_height=432 (mandatory activation deadline)
         // NO_TIMEOUT = INT64_MAX = 9223372036854775807
         args.ForceSetArg("-vbparams", "testdummy:0:9223372036854775807:0:432:2147483647");
         const auto chainParams = CreateChainParams(args, ChainType::REGTEST);
@@ -710,7 +710,7 @@ BOOST_FIXTURE_TEST_CASE(versionbits_max_activation_height_parsing, BasicTestingS
 
     {
         ArgsManager args;
-        // Test combined: max_activation_height + active_duration (temporary UASF)
+        // Test combined: max_activation_height + active_duration (RDTS)
         // NO_TIMEOUT = INT64_MAX = 9223372036854775807
         args.ForceSetArg("-vbparams", "testdummy:0:9223372036854775807:288:576:144");
         const auto chainParams = CreateChainParams(args, ChainType::REGTEST);
