@@ -4632,39 +4632,22 @@ static bool ContextualCheckBlockHeaderVolatile(const CBlockHeader& block, BlockV
 {
     const Consensus::Params& consensusParams = chainman.GetConsensus();
 
-    // BIP148-style mandatory signaling for deployments approaching max_activation_height
-    // Enforce signaling during the period before forced lock-in
-    const int nPeriod = consensusParams.nMinerConfirmationWindow;
-    const int nHeight = pindexPrev == nullptr ? 0 : pindexPrev->nHeight + 1;
-
+    // Mandatory signaling for deployments approaching max_activation_height
     for (int i = 0; i < (int)Consensus::MAX_VERSION_BITS_DEPLOYMENTS; i++) {
         const Consensus::DeploymentPos pos = static_cast<Consensus::DeploymentPos>(i);
-        const auto& deployment = consensusParams.vDeployments[pos];
+        const ThresholdState deployment_state = chainman.m_versionbitscache.State(pindexPrev, consensusParams, pos);
 
-        // Only enforce if max_activation_height is set for this deployment
-        if (deployment.max_activation_height < std::numeric_limits<int>::max()) {
-            // Calculate enforcement window: 1 period before forced lock-in
-            // Lock-in happens at (max_activation_height - nPeriod)
-            // So enforce signaling from (max_activation_height - 2*nPeriod) to (max_activation_height - nPeriod)
-            const int enforcement_start = deployment.max_activation_height - (2 * nPeriod);
-            const int enforcement_end = deployment.max_activation_height - nPeriod;
+        if (DeploymentMustSignalAfter(pindexPrev, consensusParams, pos, deployment_state)) {
+            const auto& deployment = consensusParams.vDeployments[pos];
+            const bool fVersionBits = (block.nVersion & VERSIONBITS_TOP_MASK) == VERSIONBITS_TOP_BITS;
+            const bool fDeploymentBit = (block.nVersion & (uint32_t{1} << deployment.bit)) != 0;
 
-            if (nHeight >= enforcement_start && nHeight < enforcement_end) {
-                // Check deployment state - only enforce during STARTED (stop once LOCKED_IN or ACTIVE)
-                const ThresholdState deployment_state = chainman.m_versionbitscache.State(pindexPrev, consensusParams, pos);
-                if (deployment_state == ThresholdState::STARTED) {
-                    // Check if block signals for this deployment
-                    const bool fVersionBits = (block.nVersion & VERSIONBITS_TOP_MASK) == VERSIONBITS_TOP_BITS;
-                    const bool fDeploymentBit = (block.nVersion & (uint32_t{1} << deployment.bit)) != 0;
-
-                    if (!(fVersionBits && fDeploymentBit)) {
-                        const std::string deployment_name = VersionBitsDeploymentInfo[i].name;
-                        return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,
-                                           "bad-version-" + deployment_name,
-                                           strprintf("Block must signal for %s approaching max_activation_height=%d",
-                                                   deployment_name, deployment.max_activation_height));
-                    }
-                }
+            if (!(fVersionBits && fDeploymentBit)) {
+                const std::string deployment_name = VersionBitsDeploymentInfo[i].name;
+                return state.Invalid(BlockValidationResult::BLOCK_CONSENSUS,
+                                   "bad-version-" + deployment_name,
+                                   strprintf("Block must signal for %s approaching max_activation_height=%d",
+                                           deployment_name, deployment.max_activation_height));
             }
         }
     }
