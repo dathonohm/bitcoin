@@ -109,7 +109,7 @@ TAPROOT_CONTROL_MAX_SIZE_REDUCED = TAPROOT_CONTROL_BASE_SIZE + TAPROOT_CONTROL_N
 # ANNEX_TAG is imported from test_framework.script
 
 
-class UASFReducedDataTest(BitcoinTestFramework):
+class ReducedDataTest(BitcoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
         self.setup_clean_chain = True
@@ -931,8 +931,8 @@ class UASFReducedDataTest(BitcoinTestFramework):
         self.test_mandatory_flags_cannot_be_bypassed()
         self.test_p2a_witness_rejected()
 
-        self.log.info("All UASF-ReducedData tests completed")
+        self.log.info("All ReducedData tests completed")
 
 
 if __name__ == '__main__':
-    UASFReducedDataTest(__file__).main()
+    ReducedDataTest(__file__).main()
