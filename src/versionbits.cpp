@@ -52,13 +52,20 @@ ThresholdState AbstractThresholdConditionChecker::GetStateFor(const CBlockIndex*
     assert(cache.count(pindexPrev));
     ThresholdState state = cache[pindexPrev];
 
-    // For temporary deployments, track when ACTIVE started so we know when to transition to EXPIRED.
-    // Only needed when there are blocks to compute in the walk-forward; if vToCompute is empty,
-    // everything is cached and we return immediately. This guard also prevents infinite recursion:
-    // GetStateSinceHeightFor calls GetStateFor, which would find ACTIVE in cache and call
-    // GetStateSinceHeightFor again without the !vToCompute.empty() check.
+    // Everything is already cached. Return immediately.
+    if (vToCompute.empty()) {
+        return state;
+    }
+
+    // For temporary deployments, we need to know when ACTIVE started to determine the
+    // ACTIVE -> EXPIRED transition. We get this by calling GetStateSinceHeightFor, which
+    // internally calls GetStateFor on earlier periods. Those calls could recurse back here
+    // and call GetStateSinceHeightFor again, but the early return above prevents this:
+    // the walk-back above guarantees all periods before pindexPrev are already cached,
+    // and GetStateSinceHeightFor only walks backwards, so its GetStateFor calls always hit
+    // the cache, have empty vToCompute, and return immediately via the early return.
     int activation_height = 0;
-    if (!vToCompute.empty() && state == ThresholdState::ACTIVE && active_duration < std::numeric_limits<int>::max()) {
+    if (state == ThresholdState::ACTIVE && active_duration < std::numeric_limits<int>::max()) {
         activation_height = GetStateSinceHeightFor(pindexPrev, params, cache);
     }
 
