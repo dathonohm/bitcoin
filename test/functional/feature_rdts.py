@@ -66,6 +66,7 @@ from test_framework.script import (
     OP_PUSHDATA2,
     OP_RETURN,
     OP_TRUE,
+    SegwitV0SignatureHash,
     SIGHASH_ALL,
     SIGHASH_DEFAULT,
     hash160,
@@ -916,6 +917,128 @@ class ReducedDataTest(BitcoinTestFramework):
         assert_equal(node.getblockcount(), block_height)
         self.log.info("  ✓ P2A spend with empty witness accepted")
 
+    def test_p2wsh_multisig_witness_script_exemption(self):
+        """Test that a large P2WSH witness script (>256 bytes) is exempted from the element size limit.
+
+        Inspired by mainnet tx a0032427454536006263d237819df5e72fe539a38cb26264ea45a1019fb53bee,
+        which is a 9-input transaction where each input spends an 11-of-15 P2WSH multisig.
+
+        The witness script for 11-of-15 multisig is ~513 bytes, which exceeds the 256-byte
+        MAX_SCRIPT_ELEMENT_SIZE_REDUCED limit. However, for P2WSH spends, the witness script
+        is popped from the stack BEFORE the element size check runs in ExecuteWitnessScript,
+        so it is implicitly exempted.
+        """
+        self.log.info("Testing 11-of-15 P2WSH multisig witness script exemption...")
+
+        node = self.nodes[0]
+
+        # Generate 15 key pairs
+        privkeys = [generate_privkey() for _ in range(15)]
+        pubkeys = []
+        for priv in privkeys:
+            k = ECKey()
+            k.set(priv, compressed=True)
+            pubkeys.append(k.get_pubkey().get_bytes())
+
+        # Build 11-of-15 multisig witness script:
+        # OP_11 <pub1> <pub2> ... <pub15> OP_15 OP_CHECKMULTISIG
+        witness_script = CScript([OP_11] + pubkeys + [OP_15, OP_CHECKMULTISIG])
+        self.log.info(f"  Witness script size: {len(witness_script)} bytes")
+        assert len(witness_script) > MAX_SCRIPT_ELEMENT_SIZE_REDUCED, \
+            f"Witness script should exceed 256 bytes, got {len(witness_script)}"
+
+        # Create P2WSH output
+        script_pubkey = script_to_p2wsh_script(witness_script)
+
+        # Fund the P2WSH output
+        funding_tx = self.create_test_transaction(script_pubkey)
+        txid = node.sendrawtransaction(funding_tx.serialize().hex())
+        self.generate(node, 1)
+
+        # Create spending transaction
+        spending_tx = CTransaction()
+        spending_tx.vin = [CTxIn(COutPoint(int(txid, 16), 0))]
+        output_value = funding_tx.vout[0].nValue - 10000
+        spending_tx.vout = [CTxOut(output_value, CScript([OP_0, hash160(b'\x01' * 33)]))]
+
+        # Sign with 11 of the 15 keys
+        spending_tx.wit.vtxinwit = [CTxInWitness()]
+        sighash = SegwitV0SignatureHash(
+            witness_script, spending_tx, 0, SIGHASH_ALL, funding_tx.vout[0].nValue
+        )
+
+        sigs = []
+        for i in range(11):
+            k = ECKey()
+            k.set(privkeys[i], compressed=True)
+            sig = k.sign_ecdsa(sighash) + b'\x01'  # SIGHASH_ALL
+            sigs.append(sig)
+
+        # Witness stack: [OP_0_dummy, sig1, ..., sig11, witness_script]
+        spending_tx.wit.vtxinwit[0].scriptWitness.stack = [b''] + sigs + [witness_script]
+        spending_tx.rehash()
+
+        # Should be ACCEPTED: witness script is popped before size check
+        result = node.testmempoolaccept([spending_tx.serialize().hex()])[0]
+        assert_equal(result['allowed'], True)
+        self.log.info("  PASS: 11-of-15 P2WSH multisig accepted under reduced_data")
+
+    def test_tapscript_script_exemption(self):
+        """Test that a large tapleaf script (>256 bytes) is exempted from the element size limit.
+
+        Similar to P2WSH, for tapscript spends the tapleaf script is popped from the
+        witness stack BEFORE the element size check runs in ExecuteWitnessScript,
+        so it is implicitly exempted.
+        """
+        self.log.info("Testing tapleaf script size exemption...")
+
+        node = self.nodes[0]
+
+        # Build a tapscript >256 bytes using repeated <data> OP_DROP, ending with OP_TRUE
+        # Each data push is ≤256 bytes (valid), but the total script exceeds 256 bytes.
+        large_tapscript = CScript([b'\x00' * 200, OP_DROP, b'\x00' * 200, OP_DROP, OP_TRUE])
+        assert len(large_tapscript) > MAX_SCRIPT_ELEMENT_SIZE_REDUCED, \
+            f"Tapscript should exceed 256 bytes, got {len(large_tapscript)}"
+        self.log.info(f"  Tapleaf script size: {len(large_tapscript)} bytes")
+
+        # Construct taproot output with this script as a leaf
+        privkey = generate_privkey()
+        internal_pubkey, _ = compute_xonly_pubkey(privkey)
+        taproot_info = taproot_construct(internal_pubkey, [("large_script", large_tapscript)])
+        taproot_spk = taproot_info.scriptPubKey
+
+        # Fund the taproot output
+        funding_tx = self.create_test_transaction(taproot_spk)
+        funding_txid = funding_tx.rehash()
+
+        block_height = node.getblockcount() + 1
+        block = create_block(int(node.getbestblockhash(), 16), create_coinbase(block_height), int(node.getblockheader(node.getbestblockhash())['time']) + 1)
+        block.vtx.append(funding_tx)
+        add_witness_commitment(block)
+        block.solve()
+        node.submitblock(block.serialize().hex())
+
+        # Spend via script path
+        leaf_info = taproot_info.leaves["large_script"]
+        control_block = bytes([leaf_info.version + taproot_info.negflag]) + internal_pubkey + leaf_info.merklebranch
+
+        spending_tx = CTransaction()
+        spending_tx.vin = [CTxIn(COutPoint(int(funding_txid, 16), 0), nSequence=0)]
+        output_value = funding_tx.vout[0].nValue - 1000
+        spending_tx.vout = [CTxOut(output_value, CScript([OP_1, bytes(20)]))]
+
+        # Witness stack: [<empty stack for script execution>, script, control_block]
+        # The script just does <data> DROP <data> DROP TRUE, so no stack inputs needed
+        spending_tx.wit.vtxinwit.append(CTxInWitness())
+        spending_tx.wit.vtxinwit[0].scriptWitness.stack = [large_tapscript, control_block]
+
+        spending_tx.rehash()
+
+        # Should be ACCEPTED: tapleaf script is popped before size check
+        result = node.testmempoolaccept([spending_tx.serialize().hex()])[0]
+        assert_equal(result['allowed'], True)
+        self.log.info("  PASS: >256-byte tapleaf script accepted under reduced_data")
+
     def run_test(self):
         self.init_test()
 
@@ -930,6 +1053,8 @@ class ReducedDataTest(BitcoinTestFramework):
         self.test_op_if_notif_rejection()
         self.test_mandatory_flags_cannot_be_bypassed()
         self.test_p2a_witness_rejected()
+        self.test_p2wsh_multisig_witness_script_exemption()
+        self.test_tapscript_script_exemption()
 
         self.log.info("All ReducedData tests completed")
 
