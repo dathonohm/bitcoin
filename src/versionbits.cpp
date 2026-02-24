@@ -6,6 +6,7 @@
 #include <util/check.h>
 #include <versionbits.h>
 
+// NOLINTBEGIN(misc-no-recursion)
 ThresholdState AbstractThresholdConditionChecker::GetStateFor(const CBlockIndex* pindexPrev, const Consensus::Params& params, ThresholdConditionCache& cache) const
 {
     int nPeriod = Period(params);
@@ -134,6 +135,7 @@ ThresholdState AbstractThresholdConditionChecker::GetStateFor(const CBlockIndex*
 
     return state;
 }
+// NOLINTEND(misc-no-recursion)
 
 BIP9Stats AbstractThresholdConditionChecker::GetStateStatisticsFor(const CBlockIndex* pindex, const Consensus::Params& params, std::vector<bool>* signalling_blocks) const
 {
@@ -173,6 +175,13 @@ BIP9Stats AbstractThresholdConditionChecker::GetStateStatisticsFor(const CBlockI
     return stats;
 }
 
+// WARNING: This function is called from GetStateFor and calls GetStateFor in turn.
+// The recursion is safe because this function calls GetStateFor first (which populates
+// the cache), then only walks BACKWARDS through periods that are now cached. GetStateFor
+// returns immediately for cached entries (via the early return when vToCompute is empty).
+// If the backwards walk is ever changed to query uncached periods, infinite recursion
+// will result.
+// NOLINTBEGIN(misc-no-recursion)
 int AbstractThresholdConditionChecker::GetStateSinceHeightFor(const CBlockIndex* pindexPrev, const Consensus::Params& params, ThresholdConditionCache& cache) const
 {
     int64_t start_time = BeginTime(params);
@@ -207,6 +216,7 @@ int AbstractThresholdConditionChecker::GetStateSinceHeightFor(const CBlockIndex*
     // Adjust the result because right now we point to the parent block.
     return pindexPrev->nHeight + 1;
 }
+// NOLINTEND(misc-no-recursion)
 
 namespace
 {
