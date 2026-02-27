@@ -195,6 +195,7 @@ class GetBlocksActivityTest(BitcoinTestFramework):
             [blockhash_1, blockhash_2, blockhash_2], [wallet.get_descriptor()], True))
 
     def test_no_address(self, node, wallet):
+        self.restart_node(0, extra_args=["-acceptnonstdtxn=1"])
         raw_wallet = MiniWallet(self.nodes[0], mode=MiniWalletMode.RAW_OP_TRUE)
         self.generate(raw_wallet, 100)
 
