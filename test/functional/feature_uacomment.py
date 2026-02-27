@@ -18,12 +18,14 @@ class UacommentTest(BitcoinTestFramework):
 
     def run_test(self):
         self.log.info("test multiple -uacomment")
-        test_uacomment = self.nodes[0].getnetworkinfo()["subversion"][-12:-1]
-        assert_equal(test_uacomment, "(testnode0)")
+        subversion = self.nodes[0].getnetworkinfo()["subversion"]
+        subversion = "/" + subversion.split("/")[1] + "/"
+        assert_equal(subversion[-12:-1], "(testnode0)")
 
         self.restart_node(0, ["-uacomment=foo"])
-        foo_uacomment = self.nodes[0].getnetworkinfo()["subversion"][-17:-1]
-        assert_equal(foo_uacomment, "(testnode0; foo)")
+        subversion = self.nodes[0].getnetworkinfo()["subversion"]
+        subversion = "/" + subversion.split("/")[1] + "/"
+        assert_equal(subversion[-17:-1], "(testnode0; foo)")
 
         self.log.info("test -uacomment max length")
         self.stop_node(0)
