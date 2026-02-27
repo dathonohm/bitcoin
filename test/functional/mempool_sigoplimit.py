@@ -54,8 +54,8 @@ MAX_PUBKEYS_PER_MULTISIG = 20
 class BytesPerSigOpTest(BitcoinTestFramework):
     def set_test_params(self):
         self.num_nodes = 1
-        # allow large datacarrier output to pad transactions
-        self.extra_args = [['-datacarriersize=100000']]
+        # multi-OP_RETURN padding outputs are non-standard
+        self.extra_args = [['-acceptnonstdtxn=1']]
 
     def create_p2wsh_spending_tx(self, witness_script, output_script):
         """Create a 1-input-1-output P2WSH spending transaction with only the
@@ -303,8 +303,8 @@ class BytesPerSigOpTest(BitcoinTestFramework):
     def test_legacy_sigops_stdness(self):
         self.log.info("Test a transaction with too many legacy sigops in its inputs is non-standard.")
 
-        # Restart with the default settings
-        self.restart_node(0)
+        # Restart without -acceptnonstdtxn to enable standardness checks
+        self.restart_node(0, extra_args=[])
 
         # Create a P2SH script with 15 sigops.
         _, dummy_pubkey = generate_keypair()
