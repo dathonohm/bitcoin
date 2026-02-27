@@ -36,6 +36,7 @@ class IncludeConfTest(BitcoinTestFramework):
         self.log.info("-includeconf works from config file. subversion should end with 'main; relative)/'")
 
         subversion = self.nodes[0].getnetworkinfo()["subversion"]
+        subversion = "/" + subversion.split("/")[1] + "/"
         assert subversion.endswith("main; relative)/")
 
         self.log.info("-includeconf cannot be used as command-line arg")
@@ -55,6 +56,7 @@ class IncludeConfTest(BitcoinTestFramework):
         self.start_node(0)
 
         subversion = self.nodes[0].getnetworkinfo()["subversion"]
+        subversion = "/" + subversion.split("/")[1] + "/"
         assert subversion.endswith("main; relative)/")
         self.stop_node(0, expected_stderr="warning: -includeconf cannot be used from included files; ignoring -includeconf=relative2.conf")
 
@@ -80,6 +82,7 @@ class IncludeConfTest(BitcoinTestFramework):
         self.start_node(0)
 
         subversion = self.nodes[0].getnetworkinfo()["subversion"]
+        subversion = "/" + subversion.split("/")[1] + "/"
         assert subversion.endswith("main; relative; relative2)/")
 
 if __name__ == '__main__':
