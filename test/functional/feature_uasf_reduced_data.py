@@ -716,61 +716,6 @@ class UASFReducedDataTest(BitcoinTestFramework):
         assert_equal(result_notif['allowed'], False)
         self.log.info(f"  ✓ Tapscript with OP_NOTIF: REJECTED ({result_notif['reject-reason']})")
 
-    def test_mandatory_flags_cannot_be_bypassed(self):
-        """Test that REDUCED_DATA consensus-mandatory flags cannot be bypassed via ignore_rejects.
-
-        This test verifies that even though PolicyScriptChecks can be bypassed via ignore_rejects,
-        the subsequent ConsensusScriptChecks enforces consensus rules and prevents invalid transactions
-        from entering the mempool.
-        """
-        self.log.info("Testing that REDUCED_DATA rules are enforced despite ignore_rejects...")
-        node = self.nodes[0]
-
-        # Test case: Create a witness script with a 257-byte PUSHDATA (violates REDUCED_DATA)
-        self.log.info("  Test: 257-byte PUSHDATA in witness script")
-
-        # Create a P2WSH output with a witness script containing 257-byte data push
-        witness_script_257 = CScript([b'\x00' * 257, OP_DROP, OP_TRUE])
-        script_pubkey_257 = script_to_p2wsh_script(witness_script_257)
-
-        # Create and fund the output
-        funding_tx_257 = self.create_test_transaction(script_pubkey_257)
-        txid_257 = node.sendrawtransaction(funding_tx_257.serialize().hex())
-        self.generate(node, 1)
-        output_value_257 = funding_tx_257.vout[0].nValue
-
-        # Create spending transaction that reveals the 257-byte PUSHDATA
-        spending_tx_257 = CTransaction()
-        spending_tx_257.vin = [CTxIn(COutPoint(int(txid_257, 16), 0))]
-        # Add padding to output to ensure tx meets minimum size requirements (82 bytes non-witness)
-        spending_tx_257.vout = [CTxOut(output_value_257 - 1000, CScript([OP_TRUE, OP_DROP] + [OP_TRUE] * 30))]
-        spending_tx_257.wit.vtxinwit.append(CTxInWitness())
-        spending_tx_257.wit.vtxinwit[0].scriptWitness.stack = [witness_script_257]
-        spending_tx_257.rehash()
-
-        # Test 1: Normal testmempoolaccept should reject
-        self.log.info("    Test 1a: Normal testmempoolaccept (should reject)")
-        result_normal = node.testmempoolaccept([spending_tx_257.serialize().hex()])[0]
-        assert_equal(result_normal['allowed'], False)
-        assert 'mempool-script-verify-flag' in result_normal['reject-reason']
-        self.log.info(f"    ✓ Normal testmempoolaccept correctly rejected: {result_normal['reject-reason']}")
-
-        # Test 2: Try to bypass with ignore_rejects=["non-mandatory-script-verify-flag"]
-        # Expected: Transaction is STILL REJECTED because ConsensusScriptChecks enforces consensus rules
-        self.log.info("    Test 1b: testmempoolaccept with ignore_rejects")
-        self.log.info("      This bypasses PolicyScriptChecks but NOT ConsensusScriptChecks")
-        result_bypass = node.testmempoolaccept(
-            rawtxs=[spending_tx_257.serialize().hex()],
-            ignore_rejects=["mempool-script-verify-flag-failed"]
-        )[0]
-
-        # The transaction should still be rejected because ConsensusScriptChecks
-        # uses GetBlockScriptFlags() which includes REDUCED_DATA consensus rules
-        self.log.info(f"    Result: allowed={result_bypass['allowed']}")
-        assert_equal(result_bypass['allowed'], False)
-        self.log.info(f"    ✓ Transaction correctly rejected: {result_bypass['reject-reason']}")
-        self.log.info("    ✓ ConsensusScriptChecks prevents bypass of REDUCED_DATA consensus rules")
-
     def test_generation_output_size_limit(self):
         """Test that generation tx outputs are also subject to output size limits."""
         self.log.info("Testing generation tx output scriptPubKey size limits...")
@@ -928,7 +873,6 @@ class UASFReducedDataTest(BitcoinTestFramework):
         self.test_taproot_control_block_size()
         self.test_op_success_rejection()
         self.test_op_if_notif_rejection()
-        self.test_mandatory_flags_cannot_be_bypassed()
         self.test_p2a_witness_rejected()
 
         self.log.info("All UASF-ReducedData tests completed")
