@@ -4,7 +4,6 @@
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
 """Test sigop limit mempool policy (`-bytespersigop` parameter)"""
 from copy import deepcopy
-from decimal import Decimal
 from math import ceil
 
 from test_framework.messages import (
@@ -32,7 +31,6 @@ from test_framework.script import (
     OP_TRUE,
 )
 from test_framework.script_util import (
-    keys_to_multisig_script,
     script_to_p2wsh_script,
     script_to_p2sh_script,
     MAX_STD_LEGACY_SIGOPS,
@@ -42,7 +40,6 @@ from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (
     assert_equal,
     assert_greater_than,
-    assert_greater_than_or_equal,
     assert_raises_rpc_error,
 )
 from test_framework.wallet import MiniWallet
