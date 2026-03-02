@@ -24,7 +24,6 @@ from test_framework.blocktools import (
     add_witness_commitment,
 )
 from test_framework.messages import (
-    COIN,
     COutPoint,
     CTransaction,
     CTxIn,
@@ -36,7 +35,6 @@ from test_framework.script import (
     CScript,
     OP_TRUE,
     OP_DROP,
-    hash256,
 )
 from test_framework.script_util import (
     script_to_p2wsh_script,
@@ -209,7 +207,7 @@ class ReducedDataUTXOHeightTest(BitcoinTestFramework):
 
         # Now rewind to before activation to create test UTXOs
         # Save the tip so we can restore later
-        activation_tip = node.getbestblockhash()
+        node.getbestblockhash()
 
         # Rewind to 20 blocks before activation
         target_height = ACTIVATION_HEIGHT - 20

@@ -20,7 +20,6 @@ from test_framework.messages import (
 )
 from test_framework.p2p import (
     P2PInterface,
-    P2P_SERVICES,
 )
 from test_framework.test_framework import BitcoinTestFramework
 from test_framework.util import (

@@ -46,7 +46,6 @@ from test_framework.script import (
     taproot_construct,
 )
 from test_framework.script_util import (
-    key_to_p2pk_script,
     key_to_p2pkh_script,
     key_to_p2sh_p2wpkh_script,
     key_to_p2wpkh_script,
