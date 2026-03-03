@@ -347,6 +347,8 @@ FUZZ_TARGET(versionbits, .init = initialize)
         assert(min_activation <= current_block->nHeight + 1);
         assert(exp_state == ThresholdState::EXPIRED || exp_state == ThresholdState::ACTIVE);
         break;
+    default:
+        assert(false);
     }
 
     if (blocks.size() >= period * max_periods) {
