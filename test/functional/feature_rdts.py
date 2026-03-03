@@ -2,7 +2,7 @@
 # Copyright (c) 2025 The Bitcoin Core developers
 # Distributed under the MIT software license, see the accompanying
 # file COPYING or http://www.opensource.org/licenses/mit-license.php.
-"""Test UASF-ReducedData consensus rules (BIP444).
+"""Test ReducedData Temporary Softfork (RDTS) consensus rules.
 
 This test verifies all 7 consensus rules enforced by DEPLOYMENT_REDUCED_DATA:
 
