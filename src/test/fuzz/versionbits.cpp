@@ -171,7 +171,7 @@ FUZZ_TARGET(versionbits, .init = initialize)
         timeout = fuzzed_data_provider.ConsumeBool() ? Consensus::BIP9Deployment::NO_TIMEOUT : fuzzed_data_provider.ConsumeIntegral<int64_t>();
     }
     int min_activation = fuzzed_data_provider.ConsumeIntegralInRange<int>(0, period * max_periods);
-    int active_duration = fuzzed_data_provider.ConsumeBool() ? std::numeric_limits<int>::max() : fuzzed_data_provider.ConsumeIntegralInRange<int>(period, period * max_periods);
+    int active_duration = fuzzed_data_provider.ConsumeBool() ? std::numeric_limits<int>::max() : (fuzzed_data_provider.ConsumeIntegralInRange<int>(1, max_periods) * period);
 
     TestConditionChecker checker(start_time, timeout, period, threshold, min_activation, active_duration, bit);
 
@@ -346,6 +346,9 @@ FUZZ_TARGET(versionbits, .init = initialize)
         assert(active_duration < std::numeric_limits<int>::max());
         assert(min_activation <= current_block->nHeight + 1);
         assert(exp_state == ThresholdState::EXPIRED || exp_state == ThresholdState::ACTIVE);
+        if (exp_state == ThresholdState::ACTIVE) {
+            assert(since == exp_since + active_duration);  // EXPIRED starts exactly active_duration blocks after ACTIVE started
+        }
         break;
     default:
         assert(false);

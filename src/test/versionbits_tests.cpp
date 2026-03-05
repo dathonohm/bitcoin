@@ -669,15 +669,15 @@ BOOST_FIXTURE_TEST_CASE(versionbits_active_duration, BasicTestingSetup)
     {
         ArgsManager args;
         // Test with max_activation_height set
-        // start=0, timeout=NO_TIMEOUT, min_height=288, max_height=432, active_duration=1000
+        // start=0, timeout=NO_TIMEOUT, min_height=288, max_height=432, active_duration=1008 (144*7)
         // NO_TIMEOUT = INT64_MAX = 9223372036854775807
-        args.ForceSetArg("-vbparams", "testdummy:0:9223372036854775807:288:432:1000");
+        args.ForceSetArg("-vbparams", "testdummy:0:9223372036854775807:288:432:1008");
         const auto chainParams = CreateChainParams(args, ChainType::REGTEST);
         const auto& deployment = chainParams->GetConsensus().vDeployments[Consensus::DEPLOYMENT_TESTDUMMY];
 
         BOOST_CHECK_EQUAL(deployment.min_activation_height, 288);
         BOOST_CHECK_EQUAL(deployment.max_activation_height, 432);
-        BOOST_CHECK_EQUAL(deployment.active_duration, 1000);
+        BOOST_CHECK_EQUAL(deployment.active_duration, 1008);
     }
 
     {
@@ -824,68 +824,12 @@ BOOST_AUTO_TEST_CASE(versionbits_expired_state)
     cleanup();
 }
 
-BOOST_AUTO_TEST_CASE(versionbits_expired_unaligned_duration)
+BOOST_AUTO_TEST_CASE(versionbits_expired_unaligned_duration_rejected)
 {
-    // Test active_duration that is NOT a multiple of the period.
-    // active_duration=200, period=144. Activation at 432.
-    // 432 + 200 = 632, which falls mid-period 4 (576-719).
-    // The EXPIRED transition only happens at period boundaries, so:
-    // - At pindexPrev=575: state for 576+ checks 576 >= 632? No -> ACTIVE
-    // - At pindexPrev=719: state for 720+ checks 720 >= 632? Yes -> EXPIRED
-    // The deployment stays ACTIVE for the full period even though active_duration
-    // was reached mid-period. This is by design — state is per-period.
-
-    std::vector<CBlockIndex*> blocks;
-    auto cleanup = [&blocks]() {
-        for (auto* b : blocks) delete b;
-        blocks.clear();
-    };
-
-    TestTemporaryDeploymentConditionChecker checker(200);
-
-    auto mine_block = [&blocks](int32_t nVersion) -> CBlockIndex* {
-        CBlockIndex* pindex = new CBlockIndex();
-        pindex->nHeight = blocks.size();
-        pindex->pprev = blocks.empty() ? nullptr : blocks.back();
-        pindex->nTime = 1415926536 + 600 * pindex->nHeight;
-        pindex->nVersion = nVersion;
-        pindex->BuildSkip();
-        blocks.push_back(pindex);
-        return pindex;
-    };
-
-    // Period 0: DEFINED (0-143)
-    for (int i = 0; i < 144; i++) mine_block(0);
-    BOOST_CHECK(checker.GetStateFor(blocks.back()) == ThresholdState::STARTED);
-
-    // Period 1: Signal to lock in (144-287)
-    for (int i = 0; i < 144; i++) mine_block(0x100);
-    BOOST_CHECK(checker.GetStateFor(blocks.back()) == ThresholdState::LOCKED_IN);
-
-    // Period 2: LOCKED_IN (288-431)
-    for (int i = 0; i < 144; i++) mine_block(0);
-    BOOST_CHECK(checker.GetStateFor(blocks.back()) == ThresholdState::ACTIVE);
-    BOOST_CHECK_EQUAL(checker.GetStateSinceHeightFor(blocks.back()), 432);
-
-    // Period 3: ACTIVE (432-575). 576 < 432+200=632, so still ACTIVE next period.
-    for (int i = 0; i < 144; i++) mine_block(0);
-    BOOST_CHECK(checker.GetStateFor(blocks.back()) == ThresholdState::ACTIVE);
-
-    // Period 4 (576-719). active_duration elapses at block 632 (432+200),
-    // but state is per-period so it remains ACTIVE until the period boundary.
-    // GetStateFor takes pindexPrev, so passing blocks[631] gives the state
-    // for block 632 — still ACTIVE because transitions only happen at period
-    // boundaries.
-    for (int i = 0; i < 56; i++) mine_block(0); // mine to block 631
-    BOOST_CHECK(checker.GetStateFor(blocks[631]) == ThresholdState::ACTIVE);
-
-    // Finish period 4 — mine to block 719 so we can pass it as pindexPrev
-    // to GetStateFor, which returns the state for block 720 (EXPIRED).
-    for (int i = 0; i < 88; i++) mine_block(0); // mine to block 719
-    BOOST_CHECK(checker.GetStateFor(blocks.back()) == ThresholdState::EXPIRED);
-    BOOST_CHECK_EQUAL(checker.GetStateSinceHeightFor(blocks.back()), 720);
-
-    cleanup();
+    // Test that active_duration that is NOT a multiple of the period is rejected.
+    ArgsManager args;
+    args.ForceSetArg("-vbparams", "testdummy:0:9223372036854775807:0:432:200");
+    BOOST_CHECK_THROW(CreateChainParams(args, ChainType::REGTEST), std::runtime_error);
 }
 
 BOOST_AUTO_TEST_CASE(versionbits_expired_minimum_duration)
